@@ -1,0 +1,76 @@
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+        <script type="text/javascript">
+            'use strict'
+            console.log("test")
+
+            function getRequester(username, password){
+                let auth = btoa(username + ":" + password);
+
+                return function(url, object) {
+                    jQuery.ajax({
+                        url: "https://api.github.com"+url,
+                        headers: { Authorization: "Basic " + auth },
+                        success: function ( data, textStatus, jQueryXmlHttpResponse) {
+                            console.log("success")
+                            object["data"] = data;;
+                            object["textStatus"] = textStatus;
+                            object["jQueryResponse"] = jQueryXmlHttpResponse;
+                        },
+                        error: function(jqXHR, textStatus, errorThrown ) {
+                            console.log("failure");
+                            object["jQueryResponse"] = jqXHR;
+                            object["textStatus"] = textStatus;
+                            object["errorThrown"] = errorThrown;
+                        }
+                    });
+                }
+            }
+
+            function login(username, password, object) {
+                let auth = btoa(username + ":" + password);
+
+                jQuery.ajax({
+                    method: "POST",
+                    url: "https://api.github.com",
+                    headers: { Authorization: "Basic " + auth },
+                    success: function ( data, textStatus, jQueryXmlHttpResponse) {
+                        console.log("success")
+                        object["data"] = data;;
+                        object["textStatus"] = textStatus;
+                        object["jQueryResponse"] = jQueryXmlHttpResponse;
+                    },
+                    error: function(jqXHR, textStatus, errorThrown ) {
+                        console.log("failure");
+                        object["jQueryResponse"] = jqXHR;
+                        object["textStatus"] = textStatus;
+                        object["errorThrown"] = errorThrown;
+                    }
+                });
+            }
+
+            // requester("/repos/atmiguel/cerealnotes/pulls", 
+            //     function ( data, textStatus, jQueryXmlHttpResponse) {
+            //             console.log("success")
+            //             object["data"] = data;;
+            //             object["textStatus"] = textStatus;
+            //             object["jQueryResponse"] = jQueryXmlHttpResponse;
+            //         },
+            //     function(jqXHR, textStatus, errorThrown ) {
+            //             console.log("failure");
+            //             object["jQueryResponse"] = jqXHR;
+            //             object["textStatus"] = textStatus;
+            //             object["errorThrown"] = errorThrown;
+            //         }
+            // );
+
+        </script>
+    </head>
+    <body>
+        this is a file
+    </body>
+</html>
