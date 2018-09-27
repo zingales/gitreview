@@ -31,43 +31,6 @@
                 }
             }
 
-            function login(username, password, object) {
-                let auth = btoa(username + ":" + password);
-
-                jQuery.ajax({
-                    method: "POST",
-                    url: "https://api.github.com",
-                    headers: { Authorization: "Basic " + auth },
-                    success: function ( data, textStatus, jQueryXmlHttpResponse) {
-                        console.log("success")
-                        object["data"] = data;;
-                        object["textStatus"] = textStatus;
-                        object["jQueryResponse"] = jQueryXmlHttpResponse;
-                    },
-                    error: function(jqXHR, textStatus, errorThrown ) {
-                        console.log("failure");
-                        object["jQueryResponse"] = jqXHR;
-                        object["textStatus"] = textStatus;
-                        object["errorThrown"] = errorThrown;
-                    }
-                });
-            }
-
-            // requester("/repos/atmiguel/cerealnotes/pulls", 
-            //     function ( data, textStatus, jQueryXmlHttpResponse) {
-            //             console.log("success")
-            //             object["data"] = data;;
-            //             object["textStatus"] = textStatus;
-            //             object["jQueryResponse"] = jQueryXmlHttpResponse;
-            //         },
-            //     function(jqXHR, textStatus, errorThrown ) {
-            //             console.log("failure");
-            //             object["jQueryResponse"] = jqXHR;
-            //             object["textStatus"] = textStatus;
-            //             object["errorThrown"] = errorThrown;
-            //         }
-            // );
-
         </script>
     </head>
     <body>
