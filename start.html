@@ -6,30 +6,55 @@
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
         <script type="text/javascript">
             'use strict'
-            console.log("test")
+            console.log("test");
 
-            function getRequester(username, password){
+            const authStorageName = "gitHubAuth";
+
+
+            function logIn(username, password) {
                 let auth = btoa(username + ":" + password);
 
-                return function(url, object) {
-                    jQuery.ajax({
-                        url: "https://api.github.com"+url,
-                        headers: { Authorization: "Basic " + auth },
-                        success: function ( data, textStatus, jQueryXmlHttpResponse) {
-                            console.log("success")
-                            object["data"] = data;;
-                            object["textStatus"] = textStatus;
-                            object["jQueryResponse"] = jQueryXmlHttpResponse;
-                        },
-                        error: function(jqXHR, textStatus, errorThrown ) {
-                            console.log("failure");
-                            object["jQueryResponse"] = jqXHR;
-                            object["textStatus"] = textStatus;
-                            object["errorThrown"] = errorThrown;
-                        }
-                    });
-                }
+                localStorage.setItem(authStorageName, auth);
             }
+
+            function getRequest(url){
+
+                let auth = localStorage.getItem(authStorageName);
+                if (!auth) {
+                    throw "Not logged in";
+                }
+
+                return jQuery.ajax({
+                    url: url,
+                    headers: { Authorization: "Basic " + auth }
+                });
+
+            }
+
+            function PullRequest(pullReuqestResponse) {
+                this.api_response = pullReuqestResponse;
+
+                this.isClosed = function() {
+                    return pullReuqestResponse.closed_at === null;
+                }
+
+            }
+
+            async function GetPullRequests(repoName) {
+                const data = await getRequest(`https://api.github.com/repos/${repoName}/pulls`)
+                console.log(data)
+                let toReturn = [];
+                let count = 0;
+                data.forEach(function (value) {
+                    toReturn[count] = new PullRequest(value);
+                    count += 1;
+                });
+
+                
+                return toReturn;
+
+            }
+
 
         </script>
     </head>
