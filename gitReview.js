@@ -6,10 +6,14 @@ function Comment(response) {
     this.author = response.user.login
     this.content = response.body
     this.filename = response.path
-    this.lineNumber = response.original_position
     this.id = response.id
     this._originalResponse = response
     this.child = undefined
+
+    var raw_hunk_info = response.diff_hunk.substr(response.diff_hunk.indexOf("@@ "), response.diff_hunk.indexOf(" @@"));
+    var hunk_info = convertHunk(raw_hunk_info);
+    // the original_position is 1 based
+    this.lineNumber = hunk_info.updated_line + response.original_position -1;
 }
 
 function RepoWrapper(owner, repo) {
@@ -17,6 +21,7 @@ function RepoWrapper(owner, repo) {
     this.getPullRequestComments = function(pullNumber) {
         const opts = this.getDefaultOptions();
         opts.number = pullNumber;
+        opts.per_page = 100
         return octokit.pullRequests.getComments(opts).then(({data, headers, status}) => {
             if (status !== 200) {
                 console.log(data);
@@ -67,11 +72,8 @@ function PullReviewComments(){
         const commentParentId = comment._originalResponse.in_reply_to_id;
         let iterComment = thread
         while (iterComment !== undefined) {
-            if (iterComment.id === commentParentId) {
-                if (iterComment.child !== undefined) {
-                    throw "I Already have a child";
-                }
-
+            // both the reply and the reply to the reply have the same in_reply_to_id object
+            if (iterComment.id === commentParentId && iterComment.child === undefined) {
                 iterComment.child = comment;
                 return true;
             }
@@ -84,16 +86,15 @@ function PullReviewComments(){
 
     this.string = function() {
         let string = "";
+        let totalComments = 0
         this.filesToLinnumberToCommentThread.forEach((lineNumberToComments, file) => {
             string += `${file}\n`;
-            console.log(lineNumberToComments);
-            // debugger
             lineNumberToComments.forEach((threads, lineNumber) => {
                 threads.forEach((commentThread) => {
                     string += `\t${lineNumber}:\n`;
                     let commentIter = commentThread;
-                    // console.log(commentThread);
                     while (commentIter !== undefined) {
+                        totalComments+=1;
                         string += `\t\t${commentIter.author}: ${commentIter.content}\n`;
                         commentIter = commentIter.child;
                     }
@@ -101,8 +102,24 @@ function PullReviewComments(){
             });
         });
 
+        console.log("total comments" + totalComments)
         return string;
     };
+}
+
+function convertHunk(str) {
+    // takes a string in the format "@@ -94,6 +94,59 @@"
+    let vals = str.split(" ")
+
+    let original = vals[1]
+    let updated = vals[2]
+
+    return {
+        original_line: parseInt(original.split(",")[0].substr(1)),
+        original_length: parseInt(original.split(",")[1]),
+        updated_line: parseInt(updated.split(",")[0].substr(1)),
+        original_length: parseInt(updated.split(",")[1])
+    }
 }
 
 function logIn(username, password) {
@@ -121,45 +138,6 @@ function getDefaultRepoOptionsFunction(owner, repo) {
             repo: repo,
         }
     }
-}
-
-function assignLineage(newComment, originalComment) {
-    if (originalComment === undefined){
-        return newComment
-    }
-
-    let newCommentParentId = newComment._originalResponse.in_reply_to_id;
-    let oringalCommentParentId = originalComment._originalResponse.in_reply_to_id;
-
-    if (newCommentParentId === undefined && oringalCommentParentId === undefined){
-        throw ("both comments don't think they have any parentage", newComment, originalComment);
-    }
-
-    if (newCommentParentId !== undefined) {
-        let idToFind = newCommentParentId;
-        let iterComment = originalComment;
-        while (iterComment !== undefined) {
-            if (iterComment.id === newCommentParentId){
-                if (originalComment.child !== undefined) {
-                    throw ("comment alredy has child", originalComment, newCommentParentId);
-                }
-
-                iterComment.child = newComment;
-                return originalComment;
-            }
-
-            iterComment = iterComment.child;
-        }
-
-        throw ("could not find parent")
-    }
-
-    if (oringalCommentParentId === newComment.id) {
-        newComment.child = originalComment;
-        return newComment;
-    }
-
-    throw ("something went wrong");
 }
 
 function organizeComments(rawCommentArray){
