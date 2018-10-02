@@ -21,18 +21,58 @@ function RepoWrapper(owner, repo) {
     this.getPullRequestComments = function(pullNumber) {
         const opts = this.getDefaultOptions();
         opts.number = pullNumber;
-        opts.per_page = 100
+        // opts.per_page = 100
+        const commentsByFileNameByLine = new PullReviewComments();
+
+        function commentsResponse({data, headers, status}) {
+            if (status !== 200) {
+                console.log(data);
+                console.log(headers);
+                console.log(status);
+                throw "Something went wrong";
+            }
+
+            data.forEach( function (rawComment) {
+                commentsByFileNameByLine.addRawComment(rawComment);
+            });
+
+        }
+
         return octokit.pullRequests.getComments(opts).then(({data, headers, status}) => {
             if (status !== 200) {
                 console.log(data);
                 console.log(headers);
                 throw "Something went wrong";
             }
-            // Sorting gurantees we see parents before we see children comments
-            return organizeComments(data.sort(dynamicSort("created_at")));
+            
+            data.forEach( function (rawComment) {
+                commentsByFileNameByLine.addRawComment(rawComment);
             });
-        };
+
+            var promises = []
+            if (headers.link !== undefined) {
+                var last_page = getLastPageNumber(headers.link);
+                for (let i = 2; i <= last_page; i++) {
+                    opts.page = i;
+                    promises.push(octokit.pullRequests.getComments(opts).then(commentsResponse));
+                }
+            }
+
+            return Promise.all(promises).then(() => {return commentsByFileNameByLine});
+        });
+    }
 }
+    
+
+function getLastPageNumber(link) {
+    for (const s of link.split(", ")) {
+        if (s.includes('rel="last')) {
+            return parseInt(s.substring(s.indexOf('page=')+5, s.indexOf('>')))
+        }
+    }
+}
+
+
 
 function PullReviewComments(){
     this.filesToLinnumberToCommentThread = new Map();
@@ -165,7 +205,7 @@ function dynamicSort(property) {
 
 // To simply testing
 const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
-cerealNotesRepo.getPullRequestComments(39).then((data) => {
+cerealNotesRepo.getPullRequestComments(33).then((data) => {
     let str = data.string();
     $('#comments').text(str);
 });
