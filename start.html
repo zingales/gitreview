@@ -4,6 +4,7 @@
     <head>
         <meta charset="utf-8" />
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+        <script src="octokit-rest.min.js"></script>
         <script type="text/javascript">
             'use strict'
             console.log("test");
@@ -12,9 +13,13 @@
 
 
             function logIn(username, password) {
-                let auth = btoa(username + ":" + password);
 
-                localStorage.setItem(authStorageName, auth);
+                // basic
+                octokit.authenticate({
+                  type: 'basic',
+                  username: username,
+                  password: password
+                });
             }
 
             function getRequest(url){
@@ -25,7 +30,9 @@
                 }
 
                 return jQuery.ajax({
+                    method: "GET",
                     url: url,
+                    contentType:"application/vnd.github.v3.diff", 
                     headers: { Authorization: "Basic " + auth }
                 });
 
@@ -36,6 +43,10 @@
 
                 this.isClosed = function() {
                     return pullReuqestResponse.closed_at === null;
+                }
+
+                this.getDiff = function() {
+                    return getRequest(pullReuqestResponse.diff_url)
                 }
 
             }
@@ -50,15 +61,27 @@
                     count += 1;
                 });
 
-                
+
                 return toReturn;
 
             }
+
+            const octokit = new Octokit()
+
+            // Compare: https://developer.github.com/v3/repos/#list-organization-repositories
+            octokit.repos.getForOrg({
+              org: 'octokit',
+              type: 'public'
+            }).then(({data, headers, status}) => {
+                console.log(data)
+            })
 
 
         </script>
     </head>
     <body>
-        this is a file
+        <div id="diff"> 
+            No Diff
+        </div>
     </body>
 </html>
