@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css?family=Inconsolata|Noto+Sans')
+
+base-font-size = 16px
+h1-size = 2.75rem
+h1-lineHeight = 3.5rem
+h2-size = 2rem
+h2-lineHeight = 3rem
+h3-size = 1.5rem
+h3-lineHeight = 2.8rem
+h4-size = 1.2rem
+h4-lineHeight = 2.4rem 
+p-size = 1rem
+p-lineHeight = 2rem
+h5-size = .875rem
+h5-lineHeight = 1.75rem
+h6-size = .625rem
+h6-lineHeight = 1.25rem
+
+main-font = 'Noto Sans', sans-serif
+mono-font = 'Inconsolata', monospace
+
+h1, h2, h3, h4, p 
+  color black
+h1 
+  font 700 h1-size/h1-lineHeight main-font 
+h2 
+  font h2-size/h2-lineHeight main-font
+h3 
+  font h3-size/h3-lineHeight main-font 
+h4 
+  font h4-size/h4-lineHeight main-font 
+p
+  font p-size/p-lineHeight mono-font
+h5
+  font h5-size/h5-lineHeight mono-font
+h6
+  font h6-size/h6-lineHeight mono-font
+  letter-spacing .08rem
+
+.title1
+  font-family main-font
+  font-size h1-size
+  line-height h1-lineHeight
+.title2
+  font-family main-font
+  font-size h2-size
+  line-height h2-lineHeight
+.title3
+  font-family main-font
+  color lightness(black, 50%)
+  font-size h3-size
+  line-height h3-lineHeight
+.large
+  font-family main-font
+  font-size h4-size
+  line-height h4-lineHeight
+  font-weight 700
+.regular
+  font-family mono-font
+  font-size p-size
+  line-height p-lineHeight
+.small
+  font-family mono-font
+  font-size h5-size
+  line-height h5-lineHeight
+.micro 
+  font-size h6-size
+  line-height h6-lineHeight
+  text-transform uppercase
+  letter-spacing .2em
+  font-weight 700
+.code
+  font-family mono-font
+  color red  
+  padding 0 .5rem
+.quote
+  font-family quote-font
+.tag
+  font-family mono-font
+  color alpha(black, .5)
+  padding 1rem 0
+.underline
+  border-bottom 2px solid yellow  
+  padding-bottom .2rem

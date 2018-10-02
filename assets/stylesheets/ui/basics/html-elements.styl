@@ -1,0 +1,56 @@
+a
+  color black
+
+a:hover
+  transition 200mx
+  -webkit-transition 200ms
+  transition-timing-function ease-in-out
+  -webkit-transition-timing-function ease-in-out
+
+ul
+  font-size h4-size 
+  font-weight 700
+  color black
+
+li
+  font-size p-size
+  font-weight 400
+  color black
+  cursor pointer
+ 
+//li:before
+  //content "/"
+
+li a
+  position relative
+  text-decoration none
+
+li a:hover
+  border-bottom .25rem solid black 
+  color black
+
+li a:before 
+  content ""
+  position absolute
+  width 100%
+  visibility hidden
+  -webkit-transform scaleX(0)
+  transform scaleX(0)
+  -webkit-transition all 2s ease-in-out 4s
+  transition all 2s ease-in-out 4s
+
+li a:hover:before
+  //background-color rgba(74,74,74,.1)
+  visibility visible
+  -webkit-transform scaleX(1)
+  transform scaleX(1)
+
+main
+  margin 2rem 0
+
+figure
+  padding 1rem 0
+
+p::selection
+  background-color alpha(yellow, 20%)
+
