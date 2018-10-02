@@ -1,11 +1,35 @@
 'use strict'
-console.log("test");
 
-const authStorageName = "gitHubAuth";
+const octokit = new Octokit()
 
+function Comment(response) {
+    this.author = response.user.login
+    this.content = response.body
+    this.filename = response.path
+    this.lineNumber = response.original_position
+    this.id = response.id
+    this._originalResponse = response
+    this.child = undefined
+}
+
+function RepoWrapper(owner, repo) {
+    this.getDefaultOptions = getDefaultRepoOptionsFunction(owner, repo)
+    this.getPullRequestComments = function(pullNumber) {
+        const opts = this.getDefaultOptions();
+        opts.number = pullNumber;
+        return octokit.pullRequests.getComments(opts).then(({data, headers, status}) => {
+            if (status !== 200) {
+                console.log(data);
+                console.log(headers);
+                throw "Something went wrong";
+            }
+            // Sorting gurantees we see parents before we see children comments
+            return organizeComments(data.sort(dynamicSort("created_at")));
+            });
+        };
+}
 
 function logIn(username, password) {
-
     // basic
     octokit.authenticate({
       type: 'basic',
@@ -22,20 +46,6 @@ function getDefaultRepoOptionsFunction(owner, repo) {
         }
     }
 }
-
-const octokit = new Octokit()
-const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
-
-
-function Comment(response) {
-    this.content = response.body
-    this.filename = response.path
-    this.lineNumber = response.original_position
-    this.id = response.id
-    this._originalResponse = response
-    this.child = undefined
-}
-
 
 function assignLineage(newComment, originalComment) {
     if (originalComment === undefined){
@@ -76,9 +86,9 @@ function assignLineage(newComment, originalComment) {
     throw ("something went wrong");
 }
 
-function convertComments(arrayOfApiComments){
+function organizeComments(rawCommentArray){
     const commentsByFileNameByLine = new Map();
-    arrayOfApiComments.forEach( function (each) {
+    rawCommentArray.forEach( function (each) {
         const comment = new Comment(each)
         if (commentsByFileNameByLine.get(comment.filename) === undefined) {
             commentsByFileNameByLine.set(comment.filename, new Map());
@@ -91,6 +101,30 @@ function convertComments(arrayOfApiComments){
     return commentsByFileNameByLine;
 }
 
+
+function organizedCommentsAsString(organizedComments){
+    let string = "";
+    organizedComments.forEach((lineNumberToComments, file) => {
+        string += `${file}\n`;
+        console.log(lineNumberToComments);
+        // debugger
+        lineNumberToComments.forEach((comment, lineNumber) => {
+            string += `\t${lineNumber}:\n`;
+            let commentIter = comment;
+            console.log(comment);
+            while (commentIter !== undefined) {
+                string += `\t\t${commentIter.author}: ${commentIter.content}\n`;
+                commentIter = commentIter.child;
+            }
+        });
+    });
+
+    return string;
+}
+
+
+
+// Util
 function dynamicSort(property) {
     var sortOrder = 1;
     if(property[0] === "-") {
@@ -103,19 +137,9 @@ function dynamicSort(property) {
     }
 }
 
-function RepoWrapper(owner, repo) {
-    this.getDefaultOptions = getDefaultRepoOptionsFunction(owner, repo)
-    this.getPullRequestComments = function(pullNumber) {
-        const opts = this.getDefaultOptions();
-        opts.number = pullNumber;
-        return octokit.pullRequests.getComments(opts).then(({data, headers, status}) => {
-            if (status !== 200) {
-                console.log(data);
-                console.log(headers);
-                throw "Something went wrong";
-            }
-            // Sorting gurantees we see parents before we see children comments
-            return convertComments(data.sort(dynamicSort("created_at")));
-            });
-        };
-}
+// To simply testing
+const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
+cerealNotesRepo.getPullRequestComments(39).then((data) => {
+    let str = organizedCommentsAsString(data);
+    $('#comments').text(str);
+});
