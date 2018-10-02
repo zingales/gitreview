@@ -29,6 +29,82 @@ function RepoWrapper(owner, repo) {
         };
 }
 
+function PullReviewComments(){
+    this.filesToLinnumberToCommentThread = new Map();
+    this.addRawComment = function(rawComment) {
+        let comment = new Comment(rawComment)
+        let threads = this.getCommentThreads(comment.filename, comment.lineNumber);
+        this.addCommentToThreads(threads, comment)
+    };
+
+    this.getCommentThreads = function(filename, lineNumber) {
+        let val = this.filesToLinnumberToCommentThread.get(filename);
+        if (val === undefined) {
+            val = new Map();
+            this.filesToLinnumberToCommentThread.set(filename, val);
+        }
+
+        let threads = val.get(lineNumber);
+        if (threads === undefined){
+            threads = new Array();
+            val.set(lineNumber, threads);
+        }
+
+        return threads;
+    };
+
+    this.addCommentToThreads = function(threads, comment){
+        for (const thread of threads) {
+            if (this.addToThisThread(thread, comment)) {
+                return;
+            }
+        }
+
+        threads.push(comment)
+    };
+
+    this.addToThisThread = function(thread, comment) {
+        const commentParentId = comment._originalResponse.in_reply_to_id;
+        let iterComment = thread
+        while (iterComment !== undefined) {
+            if (iterComment.id === commentParentId) {
+                if (iterComment.child !== undefined) {
+                    throw "I Already have a child";
+                }
+
+                iterComment.child = comment;
+                return true;
+            }
+
+            iterComment = iterComment.child;
+        }
+
+        return false;
+    };
+
+    this.string = function() {
+        let string = "";
+        this.filesToLinnumberToCommentThread.forEach((lineNumberToComments, file) => {
+            string += `${file}\n`;
+            console.log(lineNumberToComments);
+            // debugger
+            lineNumberToComments.forEach((threads, lineNumber) => {
+                threads.forEach((commentThread) => {
+                    string += `\t${lineNumber}:\n`;
+                    let commentIter = commentThread;
+                    // console.log(commentThread);
+                    while (commentIter !== undefined) {
+                        string += `\t\t${commentIter.author}: ${commentIter.content}\n`;
+                        commentIter = commentIter.child;
+                    }
+                });
+            });
+        });
+
+        return string;
+    };
+}
+
 function logIn(username, password) {
     // basic
     octokit.authenticate({
@@ -87,39 +163,11 @@ function assignLineage(newComment, originalComment) {
 }
 
 function organizeComments(rawCommentArray){
-    const commentsByFileNameByLine = new Map();
-    rawCommentArray.forEach( function (each) {
-        const comment = new Comment(each)
-        if (commentsByFileNameByLine.get(comment.filename) === undefined) {
-            commentsByFileNameByLine.set(comment.filename, new Map());
-        }
-        
-        let rootParent = assignLineage(comment, commentsByFileNameByLine.get(comment.filename).get(comment.lineNumber));
-
-        commentsByFileNameByLine.get(comment.filename).set(comment.lineNumber, rootParent);
+    const commentsByFileNameByLine = new PullReviewComments();
+    rawCommentArray.forEach( function (rawComment) {
+        commentsByFileNameByLine.addRawComment(rawComment);
     });
     return commentsByFileNameByLine;
-}
-
-
-function organizedCommentsAsString(organizedComments){
-    let string = "";
-    organizedComments.forEach((lineNumberToComments, file) => {
-        string += `${file}\n`;
-        console.log(lineNumberToComments);
-        // debugger
-        lineNumberToComments.forEach((comment, lineNumber) => {
-            string += `\t${lineNumber}:\n`;
-            let commentIter = comment;
-            console.log(comment);
-            while (commentIter !== undefined) {
-                string += `\t\t${commentIter.author}: ${commentIter.content}\n`;
-                commentIter = commentIter.child;
-            }
-        });
-    });
-
-    return string;
 }
 
 
@@ -140,6 +188,6 @@ function dynamicSort(property) {
 // To simply testing
 const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
 cerealNotesRepo.getPullRequestComments(39).then((data) => {
-    let str = organizedCommentsAsString(data);
+    let str = data.string();
     $('#comments').text(str);
 });
