@@ -18,48 +18,45 @@ function Comment(response) {
 
 function RepoWrapper(owner, repo) {
     this.getDefaultOptions = getDefaultRepoOptionsFunction(owner, repo)
-    this.getPullRequestComments = function(pullNumber) {
+    this.getPullRequestComments = async function(pullNumber) {
         const opts = this.getDefaultOptions();
         opts.number = pullNumber;
         // opts.per_page = 100
         const commentsByFileNameByLine = new PullReviewComments();
-
-        function commentsResponse({data, headers, status}) {
-            if (status !== 200) {
-                console.log(data);
-                console.log(headers);
-                console.log(status);
-                throw "Something went wrong";
-            }
-
-            data.forEach( function (rawComment) {
-                commentsByFileNameByLine.addRawComment(rawComment);
-            });
-
+        let {data, headers, status} = await octokit.pullRequests.getComments(opts)
+        if (status !== 200) {
+            handleError(data, headers, status)
         }
 
-        return octokit.pullRequests.getComments(opts).then(({data, headers, status}) => {
-            if (status !== 200) {
-                console.log(data);
-                console.log(headers);
-                throw "Something went wrong";
-            }
-            
-            data.forEach( function (rawComment) {
-                commentsByFileNameByLine.addRawComment(rawComment);
-            });
+        
+        for (const rawComment of data) { 
+            commentsByFileNameByLine.addRawComment(rawComment);
+        }
+        
+        if (headers.link !== undefined) {
+            let promises = []
 
-            var promises = []
-            if (headers.link !== undefined) {
-                var last_page = getLastPageNumber(headers.link);
-                for (let i = 2; i <= last_page; i++) {
-                    opts.page = i;
-                    promises.push(octokit.pullRequests.getComments(opts).then(commentsResponse));
+            let last_page = getLastPageNumber(headers.link);
+            for (let i = 2; i <= last_page; i++) {
+                opts.page = i;
+                promises.push(octokit.pullRequests.getComments(opts));
+            }
+
+            let resolvedPromises = await Promise.all(promises)
+            for (const resolvedPromise of resolvedPromises) {
+                let {data, headers, status} = resolvedPromise
+                if (status != 200) {
+                    handleError(data, headers, status)
+                }
+                
+                for (const rawComment of data) {
+                    commentsByFileNameByLine.addRawComment(rawComment);
                 }
             }
+        }
 
-            return Promise.all(promises).then(() => {return commentsByFileNameByLine});
-        });
+      return commentsByFileNameByLine;
+
     }
 }
     
