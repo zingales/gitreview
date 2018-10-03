@@ -10,7 +10,7 @@ function Comment(response) {
   this._originalResponse = response
   this.child = undefined
 
-  var raw_hunk_info = response.diff_hunk.substr(response.diff_hunk.indexOf("@@ "), response.diff_hunk.indexOf(" @@"));
+  var raw_hunk_info = response.diff_hunk.substring(response.diff_hunk.indexOf("@@ "), response.diff_hunk.indexOf(" @@") + 3);
   var hunk_info = convertHunk(raw_hunk_info);
   // the original_position is 1 based
   this.lineNumber = hunk_info.updated_line + response.original_position - 1;
@@ -75,6 +75,7 @@ function RepoWrapper(owner, repo) {
     handleError(data, headers, status);
     return data;
   };
+
   this.diffType = "DIFF";
   this.patchType = "PATHCH";
   this.commitType = "COMMIT";
@@ -203,8 +204,77 @@ function PullReviewComments() {
   };
 }
 
+function processDiff(raw_diff) {
+  const fileDiffs = []
+  for (const raw_file_diff of raw_diff.split("diff --git ")) {
+    // First value in array is empty string
+    if (raw_file_diff.length > 0) {
+      fileDiffs.push(new FileDiff(raw_file_diff));
+    }
+  }
+  return fileDiffs;
+}
+
+function FileDiff(raw_file_diff) {
+  this._raw = raw_file_diff;
+  this.updatedFileName = ""
+  const lines = raw_file_diff.split("\n");
+  let lineNumber = 0;
+  //find the orignal file name
+  while (lineNumber < lines.length) {
+    // there is usually 2,3 lines of unneeded info.
+    if (lines[lineNumber].startsWith("-")) {
+      break;
+    }
+    lineNumber += 1;
+  }
+
+  // 4 is beacuse the line starts with '--- a'
+  this.originalFileName = lines[lineNumber].substring(5, lines[lineNumber].length);
+  lineNumber += 1;
+  this.updatedFileName = lines[lineNumber].substring(5, lines[lineNumber].length);
+  lineNumber += 1;
+
+
+
+  this.hunks = []
+  let startHunk = lineNumber;
+  for (let i = lineNumber + 1; i < lines.length; i++) {
+    // if line contains hunk info create a new hunk;
+    if (lines[i].startsWith("@@ ")) {
+      this.hunks.push(new DiffHunk(lines.slice(startHunk, i)));
+      startHunk = i;
+    }
+  }
+  this.hunks.push(new DiffHunk(lines.slice(startHunk)));
+}
+
+function DiffHunk(lines) {
+  // Assumption the lines only contain one hunk;
+  // this file contains the hunk info
+  const hunk_str = lines[0].substring(0, lines[0].indexOf(" @@") + 3);
+  this.hunk_info = convertHunk(hunk_str);
+
+  //now the fun begins.
+  this.lines = lines.slice(1);
+
+  this.unchangedLines = []
+  this.addedLines = []
+  this.removedLines = []
+  for (let i = 0; i < this.lines.length; i++) {
+    const firstChar = this.lines[i][0];
+    if (firstChar === "-") {
+      this.removedLines.push(i);
+    } else if (firstChar === "+") {
+      this.addedLines.push(i);
+    } else {
+      this.unchangedLines.push(i);
+    }
+  }
+}
+
 function convertHunk(str) {
-  // takes a string in the format "@@ -94,6 +94,59 @@"
+  // takes a string in the format "-94,6 +94,59"
   let vals = str.split(" ")
 
   let original = vals[1]
@@ -266,6 +336,8 @@ cerealNotesRepo.getPullRequestComments(33).then((data) => {
   $('#comments').text(str);
 });
 
+let fileDiffs
 cerealNotesRepo.getPullRequestDiff(33).then((data) => {
   $('#diff').text(data);
+  fileDiffs = processDiff(data);
 });
