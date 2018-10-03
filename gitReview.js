@@ -17,22 +17,98 @@ function Comment(response) {
 }
 
 function RepoWrapper(owner, repo) {
-    this.getDefaultOptions = getDefaultRepoOptionsFunction(owner, repo)
-    this.getPullRequestComments = function(pullNumber) {
+    this.getDefaultOptions = getDefaultRepoOptionsFunction(owner, repo);
+    this.getPullRequestComments = async function(pullNumber) {
         const opts = this.getDefaultOptions();
         opts.number = pullNumber;
-        opts.per_page = 100
-        return octokit.pullRequests.getComments(opts).then(({data, headers, status}) => {
-            if (status !== 200) {
-                console.log(data);
-                console.log(headers);
-                throw "Something went wrong";
+        // opts.per_page = 100
+        const commentsByFileNameByLine = new PullReviewComments();
+        let {data, headers, status} = await octokit.pullRequests.getComments(opts)
+        handleError(data, headers, status)
+
+        for (const rawComment of data) { 
+            commentsByFileNameByLine.addRawComment(rawComment);
+        }
+        
+        if (headers.link !== undefined) {
+            let promises = [];
+
+            let last_page = getLastPageNumber(headers.link);
+            for (let i = 2; i <= last_page; i++) {
+                opts.page = i;
+                promises.push(octokit.pullRequests.getComments(opts));
             }
-            // Sorting gurantees we see parents before we see children comments
-            return organizeComments(data.sort(dynamicSort("created_at")));
-            });
-        };
+
+            let resolvedPromises = await Promise.all(promises)
+            for (const resolvedPromise of resolvedPromises) {
+                let {data, headers, status} = resolvedPromise;
+                handleError(data, headers, status)
+                if (status != 200) {
+                    handleError(data, headers, status);
+                }
+                
+                for (const rawComment of data) {
+                    commentsByFileNameByLine.addRawComment(rawComment);
+                }
+            }
+        }
+
+      return commentsByFileNameByLine;
+    };
+
+    this.getPullRequest = async function(pullNumber) {
+        const opts = this.getDefaultOptions();
+        opts.number = pullNumber;
+        let {data, headers, status} = await octokit.pullRequests.get(opts);
+        handleError(data, headers, status);
+        return data;
+    };
+    this.diffType = "DIFF";
+    this.patchType = "PATHCH";
+    this.commitType = "COMMIT";
+
+    this.getShaDiff = async function(sha1, sha2, diff_type= undefined) {
+        const opts = this.getDefaultOptions()
+        opts.base = sha1
+        opts.head = sha2
+        if (diff_type === this.patchType){
+            opts.headers = {"Accept": "application/vnd.github.v3.patch"}    
+        } else if (diff_type === this.diffType) {
+            opts.headers = {"Accept": "application/vnd.github.v3.diff"}
+        }
+        
+        let {data, headers, status} = await octokit.repos.compareCommits(opts);
+        handleError(data, headers, status);
+        return data;
+    };
+
+    this.getPullRequestDiff = async function(pullNumber) {
+        let data = await this.getPullRequest(pullNumber);
+        return await this.getShaDiff(data.base.sha, data.head.sha, this.diffType);
+    }
 }
+
+function handleError(data, headers, status){
+    if (status < 200 && status >=300){
+        console.log(status);
+        console.log(headers);
+        console.log(data);
+        throw "error happened";
+    }
+}
+    
+
+function getLastPageNumber(link) {
+    for (const s of link.split(", ")) {
+        if (s.includes('rel="last')) {
+            return parseInt(s.substring(s.indexOf('page=')+5, s.indexOf('>')))
+        }
+    }
+
+    throw "Couldn't find last page link";
+}
+
+
 
 function PullReviewComments(){
     this.filesToLinnumberToCommentThread = new Map();
@@ -72,7 +148,7 @@ function PullReviewComments(){
         const commentParentId = comment._originalResponse.in_reply_to_id;
         let iterComment = thread
         while (iterComment !== undefined) {
-            // both the reply and the reply to the reply have the same in_reply_to_id object
+            // both the reply and the reply to the reply have the same in_reply_to_id value
             if (iterComment.id === commentParentId && iterComment.child === undefined) {
                 iterComment.child = comment;
                 return true;
@@ -165,7 +241,10 @@ function dynamicSort(property) {
 
 // To simply testing
 const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
-cerealNotesRepo.getPullRequestComments(39).then((data) => {
+cerealNotesRepo.getPullRequestComments(33).then((data) => {
     let str = data.string();
     $('#comments').text(str);
+});
+cerealNotesRepo.getPullRequestDiff(33).then((data) => {
+    $('#diff').text(data);
 });
