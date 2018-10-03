@@ -59,6 +59,13 @@ function RepoWrapper(owner, repo) {
 
     }
 }
+
+function handleError(data, headers, status){
+    console.log(status);
+    console.log(headers);
+    console.log(data);
+    throw "error happened";
+}
     
 
 function getLastPageNumber(link) {
