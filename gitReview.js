@@ -80,10 +80,10 @@ function RepoWrapper(owner, repo) {
   this.patchType = "PATHCH";
   this.commitType = "COMMIT";
 
-  this.getShaDiff = async function(sha1, sha2, diff_type = undefined) {
+  this.getShaDiff = async function(baseSha, headSha, diff_type = undefined) {
     const opts = this.getDefaultOptions()
-    opts.base = sha1
-    opts.head = sha2
+    opts.base = baseSha;
+    opts.head = headSha;
     if (diff_type === this.patchType) {
       opts.headers = {
         "Accept": "application/vnd.github.v3.patch"
@@ -100,7 +100,7 @@ function RepoWrapper(owner, repo) {
       status
     } = await octokit.repos.compareCommits(opts);
     handleError(data, headers, status);
-    return new Diff(sha1, sha2, data);
+    return new Diff(baseSha, headSha, data);
   };
 
   this.getPullRequestDiff = async function(pullNumber) {
@@ -199,15 +199,15 @@ function PullReviewComments() {
       });
     });
 
-    console.log("total comments" + totalComments)
+    console.log("total comments " + totalComments)
     return string;
   };
 }
 
 function Diff(sha1, sha2, raw_diff) {
   this._raw = raw_diff;
-  this.base = sha1;
-  this.head = sha2;
+  this.baseSha = sha1;
+  this.headSha = sha2;
   this.fileDiffs = []
   for (const raw_file_diff of raw_diff.split("diff --git ")) {
     // First value in array is empty string
@@ -217,7 +217,7 @@ function Diff(sha1, sha2, raw_diff) {
   }
 
   this.toString = function() {
-    let string = `diff from ${this.base} to ${this.head}\n`;
+    let string = `diff from ${this.baseSha} to ${this.headSha}\n`;
     for (const fileDiff of this.fileDiffs) {
       string += fileDiff.toString().replace(/^/gm, "\t") + "\n";
     }
@@ -347,20 +347,25 @@ function dynamicSort(property) {
 }
 
 function processInputUrl(url) {
-  const pullRequestRegex = /https:\/\/github.com\/(\w+)\/(\w+)\/pull\/(\d+)/g;
+  const pullRequestRegex = /^https:\/\/github\.com\/(\w+)\/(\w+)\/pull\/(\d+)$/g;
+  const baseRepoRegex = /^https:\/\/github\.com\/(\w+)\/(\w+)$/g;
   let matches = pullRequestRegex.exec(url);
-  if (matches.length === 4) {
+  if (matches && matches.length === 4) {
     let owner = matches[1];
     let repository = matches[2];
     let prNumber = matches[3];
     const repo = new RepoWrapper(matches[1], matches[2]);
 
-    repo.getPullRequestComments(prNumber).then((data) => {
-      $('#comments').text(data.toString());
+    repo.getPullRequest(prNumber).then((data) => {
+
     });
 
-    repo.getPullRequestDiff(prNumber).then((data) => {
-      $('#diff').text(data.toString());
+    repo.getPullRequestComments(prNumber).then((pullRequestComments) => {
+      $('#comments').text(pullRequestComments.toString());
+    });
+
+    repo.getPullRequestDiff(prNumber).then((pullRequestDiff) => {
+      $('#diff').text(pullRequestDiff.toString());
     });
   } else {
     alert("invalid url " + url);
@@ -369,7 +374,6 @@ function processInputUrl(url) {
 
 //After Dom Load
 $(function() {
-
   $('#getPullRequestForm').on('submit', function() {
     var url = $('#pullRequest_url').val()
     processInputUrl(url);
