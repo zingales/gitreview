@@ -346,6 +346,37 @@ function dynamicSort(property) {
   }
 }
 
+function processInputUrl(url) {
+  const pullRequestRegex = /https:\/\/github.com\/(\w+)\/(\w+)\/pull\/(\d+)/g;
+  let matches = pullRequestRegex.exec(url);
+  if (matches.length === 4) {
+    let owner = matches[1];
+    let repository = matches[2];
+    let prNumber = matches[3];
+    const repo = new RepoWrapper(matches[1], matches[2]);
+
+    repo.getPullRequestComments(prNumber).then((data) => {
+      $('#comments').text(data.toString());
+    });
+
+    repo.getPullRequestDiff(prNumber).then((data) => {
+      $('#diff').text(data.toString());
+    });
+  } else {
+    alert("invalid url " + url);
+  }
+}
+
+//After Dom Load
+$(function() {
+
+  $('#getPullRequestForm').on('submit', function() {
+    var url = $('#pullRequest_url').val()
+    processInputUrl(url);
+    return false;
+  });
+});
+
 // To simply testing
 const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
 let prObject
@@ -358,11 +389,10 @@ cerealNotesRepo.getPullRequest(33).then((data) => {
 
 cerealNotesRepo.getPullRequestComments(33).then((data) => {
   prCommentsObject = data;
-  $('#comments').text(data.toString());
+  // $('#comments').text(data.toString());
 });
 
-let fileDiffs
 cerealNotesRepo.getPullRequestDiff(33).then((data) => {
   diffObject = data;
-  $('#diff').text(data.toString());
+  // $('#diff').text(data.toString());
 });
