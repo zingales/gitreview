@@ -10,7 +10,7 @@ function Comment(response) {
   this._originalResponse = response
   this.child = undefined
 
-  var raw_hunk_info = response.diff_hunk.substr(response.diff_hunk.indexOf("@@ "), response.diff_hunk.indexOf(" @@"));
+  var raw_hunk_info = response.diff_hunk.substring(response.diff_hunk.indexOf("@@ "), response.diff_hunk.indexOf(" @@") + 3);
   var hunk_info = convertHunk(raw_hunk_info);
   // the original_position is 1 based
   this.lineNumber = hunk_info.updated_line + response.original_position - 1;
@@ -75,6 +75,7 @@ function RepoWrapper(owner, repo) {
     handleError(data, headers, status);
     return data;
   };
+
   this.diffType = "DIFF";
   this.patchType = "PATHCH";
   this.commitType = "COMMIT";
@@ -99,7 +100,7 @@ function RepoWrapper(owner, repo) {
       status
     } = await octokit.repos.compareCommits(opts);
     handleError(data, headers, status);
-    return data;
+    return new Diff(sha1, sha2, data);
   };
 
   this.getPullRequestDiff = async function(pullNumber) {
@@ -180,7 +181,7 @@ function PullReviewComments() {
     return false;
   };
 
-  this.string = function() {
+  this.toString = function() {
     let string = "";
     let totalComments = 0
     this.filesToLinnumberToCommentThread.forEach((lineNumberToComments, file) => {
@@ -203,8 +204,104 @@ function PullReviewComments() {
   };
 }
 
+function Diff(sha1, sha2, raw_diff) {
+  this._raw = raw_diff;
+  this.base = sha1;
+  this.head = sha2;
+  this.fileDiffs = []
+  for (const raw_file_diff of raw_diff.split("diff --git ")) {
+    // First value in array is empty string
+    if (raw_file_diff.length > 0) {
+      this.fileDiffs.push(new FileDiff(raw_file_diff));
+    }
+  }
+
+  this.toString = function() {
+    let string = `diff from ${this.base} to ${this.head}\n`;
+    for (const fileDiff of this.fileDiffs) {
+      string += fileDiff.toString().replace(/^/gm, "\t") + "\n";
+    }
+
+    return string;
+  }
+}
+
+function FileDiff(raw_file_diff) {
+  this._raw = raw_file_diff;
+  this.updatedFileName = ""
+  const lines = raw_file_diff.split("\n");
+  let lineNumber = 0;
+  //find the orignal file name
+  while (lineNumber < lines.length) {
+    // there is usually 2,3 lines of unneeded info.
+    if (lines[lineNumber].startsWith("-")) {
+      break;
+    }
+    lineNumber += 1;
+  }
+
+  // 4 is beacuse the line starts with '--- a'
+  this.originalFileName = lines[lineNumber].substring(5, lines[lineNumber].length);
+  lineNumber += 1;
+  this.updatedFileName = lines[lineNumber].substring(5, lines[lineNumber].length);
+  lineNumber += 1;
+
+
+
+  this.hunks = []
+  let startHunk = lineNumber;
+  for (let i = lineNumber + 1; i < lines.length; i++) {
+    // if line contains hunk info create a new hunk;
+    if (lines[i].startsWith("@@ ")) {
+      this.hunks.push(new HunkDiff(lines.slice(startHunk, i)));
+      startHunk = i;
+    }
+  }
+  this.hunks.push(new HunkDiff(lines.slice(startHunk)));
+
+  this.toString = function() {
+    let string = `${this.originalFileName} -> ${this.updatedFileName}:\n`
+    for (const hunk of this.hunks) {
+      string += hunk.toString().replace(/^/gm, "\t");
+    }
+    return string;
+  }
+}
+
+function HunkDiff(lines) {
+  // Assumption the lines only contain one hunk;
+  // this file contains the hunk info
+  const hunk_str = lines[0].substring(0, lines[0].indexOf(" @@") + 3);
+  this.hunk_info = convertHunk(hunk_str);
+
+  //now the fun begins.
+  this.lines = lines.slice(1);
+
+  this.unchangedLines = []
+  this.addedLines = []
+  this.removedLines = []
+  for (let i = 0; i < this.lines.length; i++) {
+    const firstChar = this.lines[i][0];
+    if (firstChar === "-") {
+      this.removedLines.push(i);
+    } else if (firstChar === "+") {
+      this.addedLines.push(i);
+    } else {
+      this.unchangedLines.push(i);
+    }
+  }
+
+  this.toString = function() {
+    let string = `starting from original line number ${this.hunk_info.original_line} and spanning ${this.hunk_info.original_length}\n`;
+    for (const line of this.lines) {
+      string += `\t${line}\n`;
+    }
+    return string;
+  }
+}
+
 function convertHunk(str) {
-  // takes a string in the format "@@ -94,6 +94,59 @@"
+  // takes a string in the format "-94,6 +94,59"
   let vals = str.split(" ")
 
   let original = vals[1]
@@ -236,16 +333,6 @@ function getDefaultRepoOptionsFunction(owner, repo) {
   }
 }
 
-function organizeComments(rawCommentArray) {
-  const commentsByFileNameByLine = new PullReviewComments();
-  rawCommentArray.forEach(function(rawComment) {
-    commentsByFileNameByLine.addRawComment(rawComment);
-  });
-  return commentsByFileNameByLine;
-}
-
-
-
 // Util
 function dynamicSort(property) {
   var sortOrder = 1;
@@ -259,13 +346,53 @@ function dynamicSort(property) {
   }
 }
 
+function processInputUrl(url) {
+  const pullRequestRegex = /https:\/\/github.com\/(\w+)\/(\w+)\/pull\/(\d+)/g;
+  let matches = pullRequestRegex.exec(url);
+  if (matches.length === 4) {
+    let owner = matches[1];
+    let repository = matches[2];
+    let prNumber = matches[3];
+    const repo = new RepoWrapper(matches[1], matches[2]);
+
+    repo.getPullRequestComments(prNumber).then((data) => {
+      $('#comments').text(data.toString());
+    });
+
+    repo.getPullRequestDiff(prNumber).then((data) => {
+      $('#diff').text(data.toString());
+    });
+  } else {
+    alert("invalid url " + url);
+  }
+}
+
+//After Dom Load
+$(function() {
+
+  $('#getPullRequestForm').on('submit', function() {
+    var url = $('#pullRequest_url').val()
+    processInputUrl(url);
+    return false;
+  });
+});
+
 // To simply testing
 const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
+let prObject
+let prCommentsObject
+let diffObject
+
+cerealNotesRepo.getPullRequest(33).then((data) => {
+  prObject = data;
+});
+
 cerealNotesRepo.getPullRequestComments(33).then((data) => {
-  let str = data.string();
-  $('#comments').text(str);
+  prCommentsObject = data;
+  // $('#comments').text(data.toString());
 });
 
 cerealNotesRepo.getPullRequestDiff(33).then((data) => {
-  $('#diff').text(data);
+  diffObject = data;
+  // $('#diff').text(data.toString());
 });
