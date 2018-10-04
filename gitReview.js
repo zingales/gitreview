@@ -100,7 +100,7 @@ function RepoWrapper(owner, repo) {
       status
     } = await octokit.repos.compareCommits(opts);
     handleError(data, headers, status);
-    return data;
+    return new Diff(sha1, sha2, data);
   };
 
   this.getPullRequestDiff = async function(pullNumber) {
@@ -181,7 +181,7 @@ function PullReviewComments() {
     return false;
   };
 
-  this.string = function() {
+  this.toString = function() {
     let string = "";
     let totalComments = 0
     this.filesToLinnumberToCommentThread.forEach((lineNumberToComments, file) => {
@@ -204,15 +204,26 @@ function PullReviewComments() {
   };
 }
 
-function processDiff(raw_diff) {
-  const fileDiffs = []
+function Diff(sha1, sha2, raw_diff) {
+  this._raw = raw_diff;
+  this.base = sha1;
+  this.head = sha2;
+  this.fileDiffs = []
   for (const raw_file_diff of raw_diff.split("diff --git ")) {
     // First value in array is empty string
     if (raw_file_diff.length > 0) {
-      fileDiffs.push(new FileDiff(raw_file_diff));
+      this.fileDiffs.push(new FileDiff(raw_file_diff));
     }
   }
-  return fileDiffs;
+
+  this.toString = function() {
+    let string = `diff from ${this.base} to ${this.head}\n`;
+    for (const fileDiff of this.fileDiffs) {
+      string += fileDiff.toString().replace(/^/gm, "\t") + "\n";
+    }
+
+    return string;
+  }
 }
 
 function FileDiff(raw_file_diff) {
@@ -242,14 +253,22 @@ function FileDiff(raw_file_diff) {
   for (let i = lineNumber + 1; i < lines.length; i++) {
     // if line contains hunk info create a new hunk;
     if (lines[i].startsWith("@@ ")) {
-      this.hunks.push(new DiffHunk(lines.slice(startHunk, i)));
+      this.hunks.push(new HunkDiff(lines.slice(startHunk, i)));
       startHunk = i;
     }
   }
-  this.hunks.push(new DiffHunk(lines.slice(startHunk)));
+  this.hunks.push(new HunkDiff(lines.slice(startHunk)));
+
+  this.toString = function() {
+    let string = `${this.originalFileName} -> ${this.updatedFileName}:\n`
+    for (const hunk of this.hunks) {
+      string += hunk.toString().replace(/^/gm, "\t");
+    }
+    return string;
+  }
 }
 
-function DiffHunk(lines) {
+function HunkDiff(lines) {
   // Assumption the lines only contain one hunk;
   // this file contains the hunk info
   const hunk_str = lines[0].substring(0, lines[0].indexOf(" @@") + 3);
@@ -270,6 +289,14 @@ function DiffHunk(lines) {
     } else {
       this.unchangedLines.push(i);
     }
+  }
+
+  this.toString = function() {
+    let string = `starting from original line number ${this.hunk_info.original_line} and spanning ${this.hunk_info.original_length}\n`;
+    for (const line of this.lines) {
+      string += `\t${line}\n`;
+    }
+    return string;
   }
 }
 
@@ -306,16 +333,6 @@ function getDefaultRepoOptionsFunction(owner, repo) {
   }
 }
 
-function organizeComments(rawCommentArray) {
-  const commentsByFileNameByLine = new PullReviewComments();
-  rawCommentArray.forEach(function(rawComment) {
-    commentsByFileNameByLine.addRawComment(rawComment);
-  });
-  return commentsByFileNameByLine;
-}
-
-
-
 // Util
 function dynamicSort(property) {
   var sortOrder = 1;
@@ -331,13 +348,21 @@ function dynamicSort(property) {
 
 // To simply testing
 const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
+let prObject
+let prCommentsObject
+let diffObject
+
+cerealNotesRepo.getPullRequest(33).then((data) => {
+  prObject = data;
+});
+
 cerealNotesRepo.getPullRequestComments(33).then((data) => {
-  let str = data.string();
-  $('#comments').text(str);
+  prCommentsObject = data;
+  $('#comments').text(data.toString());
 });
 
 let fileDiffs
 cerealNotesRepo.getPullRequestDiff(33).then((data) => {
-  $('#diff').text(data);
-  fileDiffs = processDiff(data);
+  diffObject = data;
+  $('#diff').text(data.toString());
 });
