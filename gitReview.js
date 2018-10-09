@@ -2,6 +2,8 @@
 
 const octokit = new Octokit()
 
+const diffHunkExpression = /@@ -(\d+),(\d+) \+(\d+),(\d+) @@/g
+
 function Comment(response) {
   this.author = response.user.login
   this.content = response.body
@@ -10,10 +12,13 @@ function Comment(response) {
   this._originalResponse = response
   this.child = undefined
 
-  var raw_hunk_info = response.diff_hunk.substring(response.diff_hunk.indexOf("@@ "), response.diff_hunk.indexOf(" @@") + 3);
-  var hunk_info = convertHunk(raw_hunk_info);
+  let hunk_matches;
+  // Should only iterate once
+  while (hunk_matches = diffHunkExpression.exec(response.diff_hunk)) {
+    this.hunk_info = convertHunk(hunk_matches);
+  }
   // the original_position is 1 based
-  this.lineNumber = hunk_info.updated_line + response.original_position - 1;
+  this.lineNumber = this.hunk_info.updated_line + response.original_position - 1;
 }
 
 function RepoWrapper(owner, repo) {
@@ -252,7 +257,7 @@ function FileDiff(raw_file_diff) {
   let startHunk = lineNumber;
   for (let i = lineNumber + 1; i < lines.length; i++) {
     // if line contains hunk info create a new hunk;
-    if (lines[i].startsWith("@@ ")) {
+    if (lines[i].match(diffHunkExpression) !== null) {
       this.hunks.push(new HunkDiff(lines.slice(startHunk, i)));
       startHunk = i;
     }
@@ -271,8 +276,11 @@ function FileDiff(raw_file_diff) {
 function HunkDiff(lines) {
   // Assumption the lines only contain one hunk;
   // this file contains the hunk info
-  const hunk_str = lines[0].substring(0, lines[0].indexOf(" @@") + 3);
-  this.hunk_info = convertHunk(hunk_str);
+  let hunk_matches;
+  // Should only iterate once
+  while (hunk_matches = diffHunkExpression.exec(lines[0])) {
+    this.hunk_info = convertHunk(hunk_matches);
+  }
 
   //now the fun begins.
   this.lines = lines.slice(1);
@@ -300,18 +308,14 @@ function HunkDiff(lines) {
   }
 }
 
-function convertHunk(str) {
+function convertHunk(matches) {
   // takes a string in the format "-94,6 +94,59"
-  let vals = str.split(" ")
-
-  let original = vals[1]
-  let updated = vals[2]
 
   return {
-    original_line: parseInt(original.split(",")[0].substr(1)),
-    original_length: parseInt(original.split(",")[1]),
-    updated_line: parseInt(updated.split(",")[0].substr(1)),
-    original_length: parseInt(updated.split(",")[1])
+    original_line: matches[1],
+    original_length: matches[2],
+    updated_line: matches[3],
+    updated_length: matches[4]
   }
 }
 
@@ -357,7 +361,10 @@ function processInputUrl(url) {
     const repo = new RepoWrapper(matches[1], matches[2]);
 
     repo.getPullRequest(prNumber).then((data) => {
-
+      const name = data.title;
+      const numChangedFiles = data.changed_files;
+      const author = data.user.login;
+      $('#pullRequestInfo').text(`${name} by ${author}. Number of changed files ${numChangedFiles}`);
     });
 
     repo.getPullRequestComments(prNumber).then((pullRequestComments) => {
