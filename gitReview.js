@@ -2,18 +2,24 @@
 
 const octokit = new Octokit()
 
+const diffHunkExpression = /@@ -(\d+),(\d+) \+(\d+),(\d+) @@/g
+
 function Comment(response) {
   this.author = response.user.login
   this.content = response.body
+
   this.filename = response.path
   this.id = response.id
   this._originalResponse = response
   this.child = undefined
 
-  var raw_hunk_info = response.diff_hunk.substring(response.diff_hunk.indexOf("@@ "), response.diff_hunk.indexOf(" @@") + 3);
-  var hunk_info = convertHunk(raw_hunk_info);
+  //reset state
+  diffHunkExpression.lastIndex = 0;
+  const hunk_matches = diffHunkExpression.exec(response.diff_hunk)
+  this.hunk_info = convertHunk(hunk_matches);
+
   // the original_position is 1 based
-  this.lineNumber = hunk_info.updated_line + response.original_position - 1;
+  this.lineNumber = this.hunk_info.updated_line + response.original_position - 1;
 }
 
 function RepoWrapper(owner, repo) {
@@ -77,13 +83,13 @@ function RepoWrapper(owner, repo) {
   };
 
   this.diffType = "DIFF";
-  this.patchType = "PATHCH";
+  this.patchType = "PATCH";
   this.commitType = "COMMIT";
 
-  this.getShaDiff = async function(sha1, sha2, diff_type = undefined) {
+  this.getShaDiff = async function(baseSha, headSha, diff_type = undefined) {
     const opts = this.getDefaultOptions()
-    opts.base = sha1
-    opts.head = sha2
+    opts.base = baseSha;
+    opts.head = headSha;
     if (diff_type === this.patchType) {
       opts.headers = {
         "Accept": "application/vnd.github.v3.patch"
@@ -100,7 +106,7 @@ function RepoWrapper(owner, repo) {
       status
     } = await octokit.repos.compareCommits(opts);
     handleError(data, headers, status);
-    return new Diff(sha1, sha2, data);
+    return new Diff(baseSha, headSha, data);
   };
 
   this.getPullRequestDiff = async function(pullNumber) {
@@ -199,15 +205,15 @@ function PullReviewComments() {
       });
     });
 
-    console.log("total comments" + totalComments)
+    console.log("total comments " + totalComments)
     return string;
   };
 }
 
 function Diff(sha1, sha2, raw_diff) {
   this._raw = raw_diff;
-  this.base = sha1;
-  this.head = sha2;
+  this.baseSha = sha1;
+  this.headSha = sha2;
   this.fileDiffs = []
   for (const raw_file_diff of raw_diff.split("diff --git ")) {
     // First value in array is empty string
@@ -217,7 +223,7 @@ function Diff(sha1, sha2, raw_diff) {
   }
 
   this.toString = function() {
-    let string = `diff from ${this.base} to ${this.head}\n`;
+    let string = `diff from ${this.baseSha} to ${this.headSha}\n`;
     for (const fileDiff of this.fileDiffs) {
       string += fileDiff.toString().replace(/^/gm, "\t") + "\n";
     }
@@ -252,7 +258,7 @@ function FileDiff(raw_file_diff) {
   let startHunk = lineNumber;
   for (let i = lineNumber + 1; i < lines.length; i++) {
     // if line contains hunk info create a new hunk;
-    if (lines[i].startsWith("@@ ")) {
+    if (lines[i].match(diffHunkExpression) !== null) {
       this.hunks.push(new HunkDiff(lines.slice(startHunk, i)));
       startHunk = i;
     }
@@ -271,8 +277,11 @@ function FileDiff(raw_file_diff) {
 function HunkDiff(lines) {
   // Assumption the lines only contain one hunk;
   // this file contains the hunk info
-  const hunk_str = lines[0].substring(0, lines[0].indexOf(" @@") + 3);
-  this.hunk_info = convertHunk(hunk_str);
+
+  // Reset state
+  diffHunkExpression.lastIndex = 0;
+  const hunk_matches = diffHunkExpression.exec(lines[0])
+  this.hunk_info = convertHunk(hunk_matches);
 
   //now the fun begins.
   this.lines = lines.slice(1);
@@ -300,18 +309,14 @@ function HunkDiff(lines) {
   }
 }
 
-function convertHunk(str) {
+function convertHunk(matches) {
   // takes a string in the format "-94,6 +94,59"
-  let vals = str.split(" ")
-
-  let original = vals[1]
-  let updated = vals[2]
 
   return {
-    original_line: parseInt(original.split(",")[0].substr(1)),
-    original_length: parseInt(original.split(",")[1]),
-    updated_line: parseInt(updated.split(",")[0].substr(1)),
-    original_length: parseInt(updated.split(",")[1])
+    original_line: parseInt(matches[1]),
+    original_length: parseInt(matches[2]),
+    updated_line: parseInt(matches[3]),
+    updated_length: parseInt(matches[4])
   }
 }
 
@@ -347,20 +352,28 @@ function dynamicSort(property) {
 }
 
 function processInputUrl(url) {
-  const pullRequestRegex = /https:\/\/github.com\/(\w+)\/(\w+)\/pull\/(\d+)/g;
+  const pullRequestRegex = /^https:\/\/github\.com\/(\w+)\/(\w+)\/pull\/(\d+)$/g;
+  const baseRepoRegex = /^https:\/\/github\.com\/(\w+)\/(\w+)$/g;
   let matches = pullRequestRegex.exec(url);
-  if (matches.length === 4) {
+  if (matches && matches.length === 4) {
     let owner = matches[1];
     let repository = matches[2];
     let prNumber = matches[3];
     const repo = new RepoWrapper(matches[1], matches[2]);
 
-    repo.getPullRequestComments(prNumber).then((data) => {
-      $('#comments').text(data.toString());
+    repo.getPullRequest(prNumber).then((data) => {
+      const name = data.title;
+      const numChangedFiles = data.changed_files;
+      const author = data.user.login;
+      $('#pullRequestInfo').text(`${name} by ${author}. Number of changed files ${numChangedFiles}`);
     });
 
-    repo.getPullRequestDiff(prNumber).then((data) => {
-      $('#diff').text(data.toString());
+    repo.getPullRequestComments(prNumber).then((pullRequestComments) => {
+      $('#comments').text(pullRequestComments.toString());
+    });
+
+    repo.getPullRequestDiff(prNumber).then((pullRequestDiff) => {
+      $('#diff').text(pullRequestDiff.toString());
     });
   } else {
     alert("invalid url " + url);
@@ -369,7 +382,6 @@ function processInputUrl(url) {
 
 //After Dom Load
 $(function() {
-
   $('#getPullRequestForm').on('submit', function() {
     var url = $('#pullRequest_url').val()
     processInputUrl(url);
