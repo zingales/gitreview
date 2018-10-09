@@ -12,11 +12,11 @@ function Comment(response) {
   this._originalResponse = response
   this.child = undefined
 
-  let hunk_matches;
-  // Should only iterate once
-  while (hunk_matches = diffHunkExpression.exec(response.diff_hunk)) {
-    this.hunk_info = convertHunk(hunk_matches);
-  }
+  //reset state
+  diffHunkExpression.lastIndex = 0;
+  const hunk_matches = diffHunkExpression.exec(response.diff_hunk)
+  this.hunk_info = convertHunk(hunk_matches);
+
   // the original_position is 1 based
   this.lineNumber = this.hunk_info.updated_line + response.original_position - 1;
 }
@@ -82,7 +82,7 @@ function RepoWrapper(owner, repo) {
   };
 
   this.diffType = "DIFF";
-  this.patchType = "PATHCH";
+  this.patchType = "PATCH";
   this.commitType = "COMMIT";
 
   this.getShaDiff = async function(baseSha, headSha, diff_type = undefined) {
@@ -276,11 +276,11 @@ function FileDiff(raw_file_diff) {
 function HunkDiff(lines) {
   // Assumption the lines only contain one hunk;
   // this file contains the hunk info
-  let hunk_matches;
-  // Should only iterate once
-  while (hunk_matches = diffHunkExpression.exec(lines[0])) {
-    this.hunk_info = convertHunk(hunk_matches);
-  }
+
+  // Reset state
+  diffHunkExpression.lastIndex = 0;
+  const hunk_matches = diffHunkExpression.exec(lines[0])
+  this.hunk_info = convertHunk(hunk_matches);
 
   //now the fun begins.
   this.lines = lines.slice(1);
