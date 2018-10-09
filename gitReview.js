@@ -7,6 +7,7 @@ const diffHunkExpression = /@@ -(\d+),(\d+) \+(\d+),(\d+) @@/g
 function Comment(response) {
   this.author = response.user.login
   this.content = response.body
+
   this.filename = response.path
   this.id = response.id
   this._originalResponse = response
@@ -312,10 +313,10 @@ function convertHunk(matches) {
   // takes a string in the format "-94,6 +94,59"
 
   return {
-    original_line: matches[1],
-    original_length: matches[2],
-    updated_line: matches[3],
-    updated_length: matches[4]
+    original_line: parseInt(matches[1]),
+    original_length: parseInt(matches[2]),
+    updated_line: parseInt(matches[3]),
+    updated_length: parseInt(matches[4])
   }
 }
 
