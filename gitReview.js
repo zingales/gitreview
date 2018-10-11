@@ -215,7 +215,7 @@ function Diff(sha1, sha2, raw_diff) {
   this.baseSha = sha1;
   this.headSha = sha2;
   this.fileDiffs = []
-  for (const raw_file_diff of raw_diff.split("diff --git ")) {
+  for (const raw_file_diff of raw_diff.split(/^diff --git /g)) {
     // First value in array is empty string
     if (raw_file_diff.length > 0) {
       this.fileDiffs.push(new FileDiff(raw_file_diff));
@@ -311,7 +311,6 @@ function HunkDiff(lines) {
 
 function convertHunk(matches) {
   // takes a string in the format "-94,6 +94,59"
-
   return {
     original_line: parseInt(matches[1]),
     original_length: parseInt(matches[2]),
@@ -389,7 +388,7 @@ $(function() {
   });
 });
 
-// To simply testing
+// To simplify testing
 const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
 let prObject
 let prCommentsObject
@@ -401,10 +400,8 @@ cerealNotesRepo.getPullRequest(33).then((data) => {
 
 cerealNotesRepo.getPullRequestComments(33).then((data) => {
   prCommentsObject = data;
-  // $('#comments').text(data.toString());
 });
 
 cerealNotesRepo.getPullRequestDiff(33).then((data) => {
   diffObject = data;
-  // $('#diff').text(data.toString());
 });
