@@ -365,14 +365,21 @@ function processInputUrl(url) {
       const numChangedFiles = data.changed_files;
       const author = data.user.login;
       $('#pullRequestInfo').text(`${name} by ${author}. Number of changed files ${numChangedFiles}`);
+    }).catch(() => {
+      console.log("couldn't load PR " + prNumber)
+      alert("Could not find/access url " + url);
     });
 
     repo.getPullRequestComments(prNumber).then((pullRequestComments) => {
       $('#comments').text(pullRequestComments.toString());
+    }).catch(() => {
+      console.log("couldn't load PR Comments" + prNumber);
     });
 
     repo.getPullRequestDiff(prNumber).then((pullRequestDiff) => {
       $('#diff').text(pullRequestDiff.toString());
+    }).catch(() => {
+      console.log("couldn't load PR Diff" + prNumber);
     });
   } else {
     alert("invalid url " + url);
