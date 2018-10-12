@@ -215,7 +215,7 @@ function Diff(sha1, sha2, raw_diff) {
   this.baseSha = sha1;
   this.headSha = sha2;
   this.fileDiffs = []
-  for (const raw_file_diff of raw_diff.split(/^diff --git /g)) {
+  for (const raw_file_diff of raw_diff.split(/^diff --git /gm)) {
     // First value in array is empty string
     if (raw_file_diff.length > 0) {
       this.fileDiffs.push(new FileDiff(raw_file_diff));
@@ -247,10 +247,12 @@ function FileDiff(raw_file_diff) {
   }
 
   // 4 is beacuse the line starts with '--- a'
-  this.originalFileName = lines[lineNumber].substring(5, lines[lineNumber].length);
-  lineNumber += 1;
-  this.updatedFileName = lines[lineNumber].substring(5, lines[lineNumber].length);
-  lineNumber += 1;
+  const oldFileRegex = /^--- \w*\/([a-zA-Z.\/]*)/
+  const newFileRegex = /^\+\+\+ \w*\/([a-zA-Z.\/]*)/
+
+  this.originalFileName = lines[lineNumber].match(oldFileRegex)[1]
+  this.updatedFileName = lines[lineNumber + 1].match(newFileRegex)[1]
+  lineNumber += 2;
 
 
 
