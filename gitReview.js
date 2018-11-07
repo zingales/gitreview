@@ -215,7 +215,7 @@ function Diff(sha1, sha2, raw_diff) {
   this.baseSha = sha1;
   this.headSha = sha2;
   this.fileDiffs = []
-  for (const raw_file_diff of raw_diff.split("diff --git ")) {
+  for (const raw_file_diff of raw_diff.split(/^diff --git /gm)) {
     // First value in array is empty string
     if (raw_file_diff.length > 0) {
       this.fileDiffs.push(new FileDiff(raw_file_diff));
@@ -247,10 +247,12 @@ function FileDiff(raw_file_diff) {
   }
 
   // 4 is beacuse the line starts with '--- a'
-  this.originalFileName = lines[lineNumber].substring(5, lines[lineNumber].length);
-  lineNumber += 1;
-  this.updatedFileName = lines[lineNumber].substring(5, lines[lineNumber].length);
-  lineNumber += 1;
+  const oldFileRegex = /^--- \w*\/([a-zA-Z.\/]*)/
+  const newFileRegex = /^\+\+\+ \w*\/([a-zA-Z.\/]*)/
+
+  this.originalFileName = lines[lineNumber].match(oldFileRegex)[1]
+  this.updatedFileName = lines[lineNumber + 1].match(newFileRegex)[1]
+  lineNumber += 2;
 
 
 
@@ -311,7 +313,6 @@ function HunkDiff(lines) {
 
 function convertHunk(matches) {
   // takes a string in the format "-94,6 +94,59"
-
   return {
     original_line: parseInt(matches[1]),
     original_length: parseInt(matches[2]),
@@ -366,14 +367,21 @@ function processInputUrl(url) {
       const numChangedFiles = data.changed_files;
       const author = data.user.login;
       $('#pullRequestInfo').text(`${name} by ${author}. Number of changed files ${numChangedFiles}`);
+    }).catch(() => {
+      console.log("couldn't load PR " + prNumber)
+      alert("Could not find/access url " + url);
     });
 
     repo.getPullRequestComments(prNumber).then((pullRequestComments) => {
       $('#comments').text(pullRequestComments.toString());
+    }).catch(() => {
+      console.log("couldn't load PR Comments" + prNumber);
     });
 
     repo.getPullRequestDiff(prNumber).then((pullRequestDiff) => {
       $('#diff').text(pullRequestDiff.toString());
+    }).catch(() => {
+      console.log("couldn't load PR Diff" + prNumber);
     });
   } else {
     alert("invalid url " + url);
@@ -389,7 +397,7 @@ $(function() {
   });
 });
 
-// To simply testing
+// To simplify testing
 const cerealNotesRepo = new RepoWrapper('atmiguel', 'cerealnotes')
 let prObject
 let prCommentsObject
@@ -401,10 +409,8 @@ cerealNotesRepo.getPullRequest(33).then((data) => {
 
 cerealNotesRepo.getPullRequestComments(33).then((data) => {
   prCommentsObject = data;
-  // $('#comments').text(data.toString());
 });
 
 cerealNotesRepo.getPullRequestDiff(33).then((data) => {
   diffObject = data;
-  // $('#diff').text(data.toString());
 });
